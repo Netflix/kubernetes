@@ -386,7 +386,20 @@ func (m *UsernsManager) createUserNs(pod *v1.Pod) (userNs userNamespace, err err
 func (m *UsernsManager) GetOrCreateUserNamespaceMappings(pod *v1.Pod, runtimeHandler string) (*runtimeapi.UserNamespace, error) {
 	featureEnabled := utilfeature.DefaultFeatureGate.Enabled(features.UserNamespacesSupport)
 
-	if pod == nil || pod.Spec.HostUsers == nil {
+	// Use a pointer to differentiate if it was set or not
+	var hostUsers *bool
+
+	annotationVal, hasAnnotation := pod.Annotations["titus.netflix.com/host-users"]
+
+	// Give priority to the pod spec, then the annotation
+	if pod.Spec.HostUsers != nil {
+		hostUsers = pod.Spec.HostUsers
+	} else if hasAnnotation {
+		hostUsersAnnotation := annotationVal == "true"
+		hostUsers = &hostUsersAnnotation
+	}
+
+	if pod == nil || hostUsers == nil {
 		// if the feature is enabled, specify to use the node mode...
 		if featureEnabled {
 			return &runtimeapi.UserNamespace{
@@ -400,7 +413,7 @@ func (m *UsernsManager) GetOrCreateUserNamespaceMappings(pod *v1.Pod, runtimeHan
 	if !featureEnabled {
 		return nil, fmt.Errorf("the feature gate %q is disabled: can't set spec.HostUsers", features.UserNamespacesSupport)
 	}
-	if *pod.Spec.HostUsers {
+	if *hostUsers {
 		return &runtimeapi.UserNamespace{
 			Mode: runtimeapi.NamespaceMode_NODE,
 		}, nil
